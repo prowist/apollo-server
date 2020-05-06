@@ -513,20 +513,27 @@ function splitFields(
   groupForField: (field: Field<GraphQLObjectType>) => FetchGroup,
 ) {
   for (const fieldsForResponseName of groupByResponseName(fields).values()) {
-    for (const [parentType, fieldsForParentType] of groupByParentType(
-      fieldsForResponseName,
-    )) {
+
+    // If the length of possibleTypes is zero, we're nested inside a type condition
+    // that's impossible to fulfill and can be excluded from the query plan altogether.
+    const validFields = fieldsForResponseName.filter(
+      (field) => field.scope.possibleTypes.length > 0,
+    );
+
+    for (const [parentType, fieldsForParentType] of groupByParentType(validFields)) {
       // Field nodes that share the same response name and parent type are guaranteed
       // to have the same field name and arguments. We only need the other nodes when
       // merging selection sets, to take node-specific subfields and directives
       // into account.
 
+      // XXX the assumption noted above is questionable. I suspect this LOC is the root
+      // cause for https://github.com/apollographql/apollo-server/issues/3983,
+      // however the problem noted in the issue is resolved by simply filtering out
+      // fields with no possibleTypes earlier in the loop process. I suspect this
+      // approach is fragile and need to spend some time thinking about how I'd break
+      // the current implementation with a test case and what the correct solution is.
       const field = fieldsForParentType[0];
       const { scope, fieldDef } = field;
-
-      // If the length of possibleTypes is zero, we're nested inside a type condition
-      // that's impossible to fulfill and can be excluded from the query plan altogether.
-      if (scope.possibleTypes.length === 0) continue;
 
       // We skip `__typename` for root types.
       if (fieldDef.name === TypeNameMetaFieldDef.name) {
